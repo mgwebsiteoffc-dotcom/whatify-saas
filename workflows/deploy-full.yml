@@ -1,1 +1,52 @@
+name: Build & Deploy Full Project
 
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'  # change to your PHP version
+          extensions: mbstring, bcmath, pdo_mysql, xml, curl, json
+
+      - name: Setup Composer auth (if private packages)
+        run: composer config -g github-oauth.github.com ${{ secrets.GITHUB_TOKEN }} || true
+
+      - name: Install composer dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install node deps and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Remove dev files (optional)
+        run: |
+          rm -rf node_modules
+          rm -rf tests
+          rm -f .env.example
+
+      - name: Rsync deploy via SSH
+        uses: burnett01/rsync-deployments@v4
+        with:
+          switches: -avz --delete --compress
+          path: "./"   # repo root
+          remote_path: ${{ secrets.REMOTE_PROJECT_PATH }} # e.g. /home/u665804595/domains/.../whatify
+          remote_host: ${{ secrets.HOST }}
+          remote_user: ${{ secrets.USER }}
+          remote_port: ${{ secrets.PORT }}
+          # using SSH private key from secret
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
